@@ -55,9 +55,67 @@ def detect_public_s3_buckets():
 
     return findings
 
+def detect_open_security_groups():
+    """
+    Checks every security group in the account for inbound rules that allow
+    unrestricted access (0.0.0.0/0) on sensitive ports.
+    Returns a list of findings for any security group with this exposure.
+    """
+    ec2 = boto3.client('ec2')
+    findings = []
+
+    # Ports considered sensitive enough to flag if open to the world
+    SENSITIVE_PORTS = {
+        22: "SSH",
+        3389: "RDP",
+        3306: "MySQL",
+        5432: "PostgreSQL",
+        27017: "MongoDB"
+    }
+
+    # Step 1: get every security group in the account
+    response = ec2.describe_security_groups()
+    security_groups = response['SecurityGroups']
+
+    for sg in security_groups:
+        sg_id = sg['GroupId']
+        sg_name = sg.get('GroupName', 'N/A')
+        open_rules = []
+
+        # Step 2: check each inbound rule
+        for permission in sg['IpPermissions']:
+            from_port = permission.get('FromPort')
+            to_port = permission.get('ToPort')
+
+            # Step 3: check if this rule allows traffic from anywhere (0.0.0.0/0)
+            for ip_range in permission.get('IpRanges', []):
+                if ip_range.get('CidrIp') == '0.0.0.0/0':
+                    # Step 4: check if the open port range includes a sensitive port
+                    if from_port is not None and to_port is not None:
+                        for port, service_name in SENSITIVE_PORTS.items():
+                            if from_port <= port <= to_port:
+                                open_rules.append({
+                                    "port": port,
+                                    "service": service_name,
+                                    "source": "0.0.0.0/0 (anywhere)"
+                                })
+
+        if open_rules:
+            findings.append({
+                "resource_type": "Security Group",
+                "resource_name": sg_name,
+                "resource_id": sg_id,
+                "issue": "Inbound rule allows unrestricted access on sensitive port(s)",
+                "details": open_rules
+            })
+
+    return findings
 
 if __name__ == "__main__":
-    results = detect_public_s3_buckets()
-    print(f"Found {len(results)} public S3 bucket(s):\n")
-    for finding in results:
-        print(finding)
+    import json
+
+    all_findings = []
+    all_findings.extend(detect_public_s3_buckets())
+    all_findings.extend(detect_open_security_groups())
+
+    print(json.dumps(all_findings, indent=2))
