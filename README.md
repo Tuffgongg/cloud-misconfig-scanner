@@ -15,6 +15,7 @@ A cloud security tool that scans an AWS account for common misconfigurations, ma
 
 ## Findings Detected
 - **Public S3 buckets** — checks Block Public Access configuration and bucket policy for public access grants
+- **Open security groups** — checks inbound rules for unrestricted access (0.0.0.0/0) on sensitive ports (SSH, RDP, and common database ports), rather than flagging all open ports indiscriminately
 
 ## Design Decisions
 - **Custom least-privilege IAM policy instead of AWS-managed ReadOnlyAccess** — scoped to only the specific read/describe/list actions each detector needs, minimizing blast radius if credentials were ever compromised.
